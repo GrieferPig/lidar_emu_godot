@@ -1,0 +1,33 @@
+[gd_scene load_steps=2 format=3 uid="uid://5pyner02weu5"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_n2snw"]
+font_size = 32
+
+[node name="Hud" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="CamFacing" type="Label" parent="."]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0
+text = "Camera Facing: angleH, angleV"
+label_settings = SubResource("LabelSettings_n2snw")
+
+[node name="CamPos" type="Label" parent="."]
+offset_top = 45.0
+offset_right = 473.0
+offset_bottom = 90.0
+text = "Camera Pos: x, y, z (offsetx, offsety, offsetz)"
+label_settings = SubResource("LabelSettings_n2snw")
+
+[node name="ScanLog" type="Label" parent="."]
+offset_top = 90.0
+offset_right = 1159.0
+offset_bottom = 135.0
+text = "Successfully scanned..."
+label_settings = SubResource("LabelSettings_n2snw")
