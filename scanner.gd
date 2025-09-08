@@ -208,7 +208,7 @@ func generate_and_visualize_scan():
 				multi_mesh_instance.multimesh.set_instance_color(instance_index, point_color)
 
 				var collider = result.collider
-				var object_name = collider.name if collider else "Unknown"
+				var object_name = collider.get_instance_id()
 				point_cloud_data.append({"pos": result.position, "name": object_name})
 				
 				var local_hit_pos = multi_mesh_instance.to_local(result.position)

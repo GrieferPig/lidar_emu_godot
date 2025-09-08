@@ -5,6 +5,21 @@ import sys
 import glob
 from collections import defaultdict
 
+# ---------------------------------------------------------------------------
+# Coordinate System Notes
+# ---------------------------------------------------------------------------
+# Matplotlib's mplot3d assumes Z is "up" (vertical on screen) in its default
+# rendering. Godot (and many 3D engines) use a right‑handed system with Y up.
+# To display data in a right‑handed Y‑up frame inside Matplotlib we:
+#   1. Keep data in native (X, Y, Z) with Y as up.
+#   2. When plotting, swap axes so that (X, Z, Y) is passed to Matplotlib,
+#      because Matplotlib's Z axis is the vertical one we want to represent Y.
+#   3. Relabel the axes so users see X (right), Z (forward/depth), Y (up).
+#   4. (Optional) Invert the depth axis if you prefer -Z forward conventions.
+# This preserves a right‑handed orientation: X × Y = Z.
+
+Y_UP_DISPLAY = True  # Toggle if you want raw Matplotlib (Z up) instead.
+
 
 def visualize_point_cloud(file_path):
     """
@@ -31,6 +46,7 @@ def visualize_point_cloud(file_path):
                     # Read yaw and pitch in radians
                     yaw_rad, pitch_rad = [float(x) for x in line.split()[2:]]
                     # Store degrees for display title
+                    # yaw_rad = (yaw_rad - np.pi / 2) % (2 * np.pi)
                     scanner_rot_deg = (np.rad2deg(yaw_rad), np.rad2deg(pitch_rad))
                 elif line and not line.startswith("#"):
                     parts = line.split()
@@ -53,9 +69,20 @@ def visualize_point_cloud(file_path):
 
         # --- Plot each object's points ---
         for i, (name, points) in enumerate(objects.items()):
-            # Remap Godot's Y-up coordinates to Matplotlib's Z-up
-            godot_x, godot_y_up, godot_z = points[:, 0], points[:, 1], points[:, 2]
-            ax.scatter(godot_x, godot_z, godot_y_up, s=10, label=name, color=colors(i))
+            if Y_UP_DISPLAY:
+                # points: (X, Y, Z) with Y up. Map to (X, Z, Y) so Matplotlib's Z shows Y.
+                x_vals, y_up, z_vals = points[:, 0], points[:, 1], points[:, 2]
+                ax.scatter(-x_vals, z_vals, y_up, s=10, label=name, color=colors(i))
+            else:
+                # Standard Matplotlib Z‑up (no remap)
+                ax.scatter(
+                    points[:, 0],
+                    points[:, 1],
+                    points[:, 2],
+                    s=10,
+                    label=name,
+                    color=colors(i),
+                )
 
         # --- Calculate max range and draw dome/floor ---
         all_points = np.vstack(list(objects.values()))
@@ -69,29 +96,49 @@ def visualize_point_cloud(file_path):
         # But since the line is on the floor (Z=0), it's a simple 2D rotation.
         # Godot X maps to plot X, Godot Z maps to plot Y.
         # Rotation of (0,1) by yaw: x' = sin(yaw), y' = cos(yaw)
-        front_x = dome_radius * np.sin(yaw_rad)
-        front_y_depth = dome_radius * np.cos(yaw_rad)
-        ax.plot(
-            [0, front_x],
-            [0, front_y_depth],
-            [0, 0],
-            color="red",
-            linewidth=2.5,
-            label="Front Direction",
-        )
+        front_x = -dome_radius * np.sin(yaw_rad)
+        front_z_depth = dome_radius * np.cos(yaw_rad)
+        if Y_UP_DISPLAY:
+            ax.plot(
+                [0, front_x],  # X
+                [0, front_z_depth],  # Y axis in plot = world Z (depth)
+                [0, 0],  # Z axis in plot = world Y (up)
+                color="red",
+                linewidth=2.5,
+                label="Front Direction",
+            )
+        else:
+            ax.plot(
+                [0, front_x],
+                [0, 0],
+                [0, front_z_depth],
+                color="red",
+                linewidth=2.5,
+                label="Front Direction",
+            )
 
         # Create the floor circle
         theta = np.linspace(0, 2 * np.pi, 100)
         floor_x = dome_radius * np.cos(theta)
         floor_z_depth = dome_radius * np.sin(theta)
-        ax.plot(
-            floor_x,
-            floor_z_depth,
-            0,
-            color="gray",
-            linestyle="--",
-            label="Sensor Floor Range",
-        )
+        if Y_UP_DISPLAY:
+            ax.plot(
+                floor_x,
+                floor_z_depth,  # depth on Matplotlib Y
+                0,  # up (Y) on Matplotlib Z
+                color="gray",
+                linestyle="--",
+                label="Sensor Floor Range",
+            )
+        else:
+            ax.plot(
+                floor_x,
+                0,
+                floor_z_depth,
+                color="gray",
+                linestyle="--",
+                label="Sensor Floor Range",
+            )
 
         # Create the hemisphere (dome)
         u = np.linspace(0, 2 * np.pi, 50)
@@ -99,27 +146,50 @@ def visualize_point_cloud(file_path):
         dome_x = dome_radius * np.outer(np.cos(u), np.sin(v))
         dome_z_depth = dome_radius * np.outer(np.sin(u), np.sin(v))
         dome_y_up = dome_radius * np.outer(np.ones(np.size(u)), np.cos(v))
-        ax.plot_wireframe(
-            dome_x,
-            dome_z_depth,
-            dome_y_up,
-            color="gray",
-            alpha=0.3,
-            rstride=5,
-            cstride=5,
-        )
+        if Y_UP_DISPLAY:
+            ax.plot_wireframe(
+                dome_x,
+                dome_z_depth,
+                dome_y_up,
+                color="gray",
+                alpha=0.3,
+                rstride=5,
+                cstride=5,
+            )
+        else:
+            ax.plot_wireframe(
+                dome_x,
+                dome_y_up,
+                dome_z_depth,
+                color="gray",
+                alpha=0.3,
+                rstride=5,
+                cstride=5,
+            )
 
         # Plot the sensor origin
-        ax.scatter(
-            0,
-            0,
-            0,
-            s=150,
-            color="black",
-            marker="x",
-            label="Sensor Origin",
-            depthshade=False,
-        )
+        if Y_UP_DISPLAY:
+            ax.scatter(
+                0,
+                0,
+                0,
+                s=150,
+                color="black",
+                marker="x",
+                label="Sensor Origin",
+                depthshade=False,
+            )
+        else:
+            ax.scatter(
+                0,
+                0,
+                0,
+                s=150,
+                color="black",
+                marker="x",
+                label="Sensor Origin",
+                depthshade=False,
+            )
 
         # --- Customize the Plot ---
         title = "LiDAR Point Cloud and Sensor Range"
@@ -132,19 +202,28 @@ def visualize_point_cloud(file_path):
         title += f"\nScan from {pos_str} | {rot_str}"
         ax.set_title(title)
 
-        ax.set_xlabel("X-axis"), ax.set_ylabel("Z-axis (Depth)"), ax.set_zlabel(
-            "Y-axis (Up)"
-        )
-        ax.legend(loc="upper left", bbox_to_anchor=(1.05, 1))
+        if Y_UP_DISPLAY:
+            ax.set_xlabel("X (Right)")
+            ax.set_ylabel("Z (Forward/Depth)")
+            ax.set_zlabel("Y (Up)")
+        else:
+            ax.set_xlabel("X")
+            ax.set_ylabel("Y")
+            ax.set_zlabel("Z")
+        # ax.legend(loc="upper left", bbox_to_anchor=(1.05, 1))
         fig.tight_layout()
         ax.view_init(elev=25, azim=45)
 
         # --- Set equal aspect ratio ---
-        x_coords, y_coords, z_coords = (
-            all_points[:, 0],
-            all_points[:, 2],
-            all_points[:, 1],
-        )
+        if Y_UP_DISPLAY:
+            # x -> x, depth -> z, up -> y
+            x_coords = all_points[:, 0]
+            y_coords = all_points[:, 2]  # depth
+            z_coords = all_points[:, 1]  # up
+        else:
+            x_coords = all_points[:, 0]
+            y_coords = all_points[:, 1]
+            z_coords = all_points[:, 2]
         mid_x, mid_y, mid_z = np.mean(x_coords), np.mean(y_coords), np.mean(z_coords)
         max_range_plot = max(
             x_coords.max() - x_coords.min(),
@@ -156,7 +235,14 @@ def visualize_point_cloud(file_path):
 
         ax.set_xlim(mid_x - half_range, mid_x + half_range)
         ax.set_ylim(mid_y - half_range, mid_y + half_range)
-        ax.set_zlim(0, max_range_plot)  # Start floor at 0
+        if Y_UP_DISPLAY:
+            ax.set_zlim(0, max_range_plot)  # Y up from 0
+        else:
+            ax.set_zlim(mid_z - half_range, mid_z + half_range)
+
+        if Y_UP_DISPLAY:
+            # Slight tweak of viewing angle so Y (up) reads naturally
+            ax.view_init(elev=20, azim=45)
 
         print("Displaying plot. Close the plot window to exit.")
         plt.show()
